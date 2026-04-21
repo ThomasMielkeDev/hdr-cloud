@@ -3,19 +3,42 @@ import numpy as np
 
 
 def fuse(images):
-    merge = cv2.createMergeMertens()
 
-    # 🔥 safety: ensure same size
+    import cv2
+    import numpy as np
+
+    # --- STEP 1: get base size ---
     h, w = images[0].shape[:2]
-    fixed = []
+
+    cleaned = []
 
     for img in images:
+
+        if img is None:
+            continue
+
+        # --- force same size ---
         if img.shape[:2] != (h, w):
             img = cv2.resize(img, (w, h))
-        fixed.append(img.astype(np.float32) / 255.0)
 
-    return merge.process(fixed)
+        # --- force 3 channels ---
+        if len(img.shape) == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
+        if img.shape[2] == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+        # --- convert to float32 (CRITICAL) ---
+        img = img.astype(np.float32) / 255.0
+
+        cleaned.append(img)
+
+    if len(cleaned) < 2:
+        raise ValueError("Not enough valid images after cleanup")
+
+    merge = cv2.createMergeMertens()
+
+    return merge.process(cleaned)
 
 def enhance(img):
 
