@@ -47,59 +47,53 @@ def fuse(images):
     import cv2
     import numpy as np
 
-    if len(images) < 2:
-        raise ValueError("Need at least 2 images")
-
-    # -----------------------------
-    # STEP 1: FORCE BASE IMAGE
-    # -----------------------------
-    base = images[0]
-    h, w = base.shape[:2]
-
     cleaned = []
 
+    # 1. validate + normalize inputs
     for img in images:
-
         if img is None:
             continue
 
-        # FORCE SIZE
-        img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
-
-        # FORCE CHANNEL COUNT
+        # force BGR
         if len(img.shape) == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
         if img.shape[2] == 4:
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-        # FORCE TYPE (IMPORTANT)
-        img = np.ascontiguousarray(img, dtype=np.uint8)
-
         cleaned.append(img)
 
-    # FINAL SAFETY CHECK (THIS IS KEY)
-    for i in cleaned:
-        if i.shape != cleaned[0].shape:
-            raise ValueError(f"Shape mismatch detected: {i.shape} vs {cleaned[0].shape}")
+    if len(cleaned) < 2:
+        raise ValueError("Not enough valid images")
 
-    # -----------------------------
-    # STEP 2: SAFE CONVERSION
-    # -----------------------------
-    float_images = []
+    # 2. force SAME SIZE (critical)
+    h, w = cleaned[0].shape[:2]
+
+    normalized = []
     for img in cleaned:
-        f = img.astype(np.float32) / 255.0
-        float_images.append(f)
+        img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+        img = img.astype(np.float32)
+        normalized.append(img)
 
-    # -----------------------------
-    # STEP 3: MERGE
-    # -----------------------------
-    merge = cv2.createMergeMertens()
+    # 3. exposure fusion (NUMPY, not OpenCV C++ merge)
+    result = np.zeros_like(normalized[0], dtype=np.float32)
+    weight_sum = np.zeros((h, w, 1), dtype=np.float32)
 
-    result = merge.process(float_images)
+    for img in normalized:
 
-    return result
+        # luminance-based weight
+        lum = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
+        weight = np.exp(-((lum - 0.5) ** 2) / 0.08)
+
+        weight = weight[..., None]
+
+        result += img * weight
+        weight_sum += weight
+
+    result /= np.clip(weight_sum, 1e-6, None)
+
+    return np.clip(result / 255.0, 0, 1)
 
 # ----------------------------
 # ENHANCEMENT (LIGHTROOM STYLE)
