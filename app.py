@@ -7,7 +7,9 @@ from flask_cors import CORS
 from hdr import process
 
 app = Flask(__name__)
-CORS(app, origins=["https://thomasmielke.dev"])
+
+# 🔥 FIXED CORS (critical)
+CORS(app, origins=["*"])
 
 UPLOAD_DIR = "uploads"
 EXTRACT_DIR = os.path.join(UPLOAD_DIR, "extracted")
@@ -26,7 +28,7 @@ def hdr():
 
     try:
         if "file" not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
+            return jsonify({"error": "No file"}), 400
 
         file = request.files["file"]
 
@@ -36,14 +38,13 @@ def hdr():
         zip_path = os.path.join(UPLOAD_DIR, "input.zip")
         file.save(zip_path)
 
-        # clear extraction folder
+        # clear old files
         for f in os.listdir(EXTRACT_DIR):
             try:
                 os.remove(os.path.join(EXTRACT_DIR, f))
             except:
                 pass
 
-        # extract zip
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(EXTRACT_DIR)
 
@@ -57,18 +58,15 @@ def hdr():
 
                 path = os.path.join(root, name)
 
-                img = cv2.imread(path, cv2.IMREAD_COLOR)
+                img = cv2.imread(path)
 
                 if img is None:
-                    print("Skipping unreadable:", path)
                     continue
 
                 images.append(img)
 
-        print("Loaded images:", len(images))
-
         if len(images) < 2:
-            return jsonify({"error": "Need at least 2 valid images"}), 400
+            return jsonify({"error": "Need at least 2 images"}), 400
 
         result = process(images, vividness, sky_boost)
 
@@ -77,9 +75,8 @@ def hdr():
 
         return send_file(out_path, mimetype="image/jpeg")
 
-
     except Exception as e:
-        print("HDR ERROR:", str(e))
+        print("ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
 
 
