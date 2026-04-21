@@ -3,6 +3,7 @@ import zipfile
 import cv2
 from flask import Flask, request, send_file
 from hdr import process
+from flask_cors import CORS
 
 app = Flask(__name__)
 
