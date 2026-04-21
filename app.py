@@ -7,8 +7,6 @@ from flask_cors import CORS
 from hdr import process
 
 app = Flask(__name__)
-
-# 🔓 allow your website to call this API
 CORS(app, origins=["https://thomasmielke.dev"])
 
 UPLOAD_DIR = "uploads"
@@ -18,35 +16,40 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(EXTRACT_DIR, exist_ok=True)
 
 
-# ---------------- HDR ENDPOINT ----------------
+@app.route("/", methods=["GET"])
+def home():
+    return "HDR API running ✔"
+
+
 @app.route("/hdr", methods=["POST"])
 def hdr():
 
     try:
-        # ---------------- CHECK FILE ----------------
         if "file" not in request.files:
             return jsonify({"error": "No file uploaded"}), 400
 
         file = request.files["file"]
 
+        vividness = float(request.form.get("vividness", 1.2))
+        sky_boost = float(request.form.get("sky", 1.3))
+
         zip_path = os.path.join(UPLOAD_DIR, "input.zip")
         file.save(zip_path)
 
-        # ---------------- CLEAN OLD FILES ----------------
+        # clear extraction folder
         for f in os.listdir(EXTRACT_DIR):
             try:
                 os.remove(os.path.join(EXTRACT_DIR, f))
             except:
                 pass
 
-        # ---------------- EXTRACT ZIP ----------------
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        # extract zip
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(EXTRACT_DIR)
 
-        # ---------------- LOAD IMAGES ----------------
         images = []
 
-        for root, dirs, files in os.walk(EXTRACT_DIR):
+        for root, _, files in os.walk(EXTRACT_DIR):
             for name in files:
 
                 if not name.lower().endswith((".jpg", ".jpeg", ".png")):
@@ -57,26 +60,18 @@ def hdr():
                 img = cv2.imread(path, cv2.IMREAD_COLOR)
 
                 if img is None:
-                    print("❌ Skipping unreadable image:", path)
+                    print("Skipping unreadable:", path)
                     continue
 
                 images.append(img)
 
-        print("✅ Images loaded:", len(images))
+        print("Loaded images:", len(images))
 
-        # ---------------- VALIDATION ----------------
         if len(images) < 2:
-            return jsonify({
-                "error": "Not enough valid images in ZIP (need at least 2 JPG/PNG files)"
-            }), 400
+            return jsonify({"error": "Need at least 2 valid images"}), 400
 
-        # ---------------- HDR PROCESS ----------------
-        result = process(images)
+        result = process(images, vividness, sky_boost)
 
-        if result is None:
-            return jsonify({"error": "HDR processing failed"}), 500
-
-        # ---------------- SAVE OUTPUT ----------------
         out_path = os.path.join(UPLOAD_DIR, "result.jpg")
         cv2.imwrite(out_path, result)
 
@@ -84,17 +79,10 @@ def hdr():
 
 
     except Exception as e:
-        print("🔥 SERVER ERROR:", str(e))
+        print("HDR ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
 
 
-# ---------------- HEALTH CHECK ----------------
-@app.route("/", methods=["GET"])
-def home():
-    return "HDR API running ✔"
-
-
-# ---------------- START SERVER ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
