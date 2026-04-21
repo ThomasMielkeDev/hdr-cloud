@@ -1,3 +1,5 @@
+print("🔥 HDR PIPELINE VERSION 2 LOADED")
+
 import cv2
 import numpy as np
 
