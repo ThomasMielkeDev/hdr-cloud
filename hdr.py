@@ -2,60 +2,61 @@ import cv2
 import numpy as np
 
 
-def fuse(images):
-
-    import cv2
-    import numpy as np
-
-    if len(images) == 0:
-        raise ValueError("No images passed to fuse")
-
-    # --- STEP 1: force base size ---
-    base = images[0]
-    h, w = base.shape[:2]
+# ----------------------------
+# SAFE IMAGE NORMALIZATION
+# ----------------------------
+def normalize_images(images):
 
     cleaned = []
 
-    for idx, img in enumerate(images):
+    # base size
+    base = images[0]
+    h, w = base.shape[:2]
+
+    for img in images:
 
         if img is None:
             continue
 
-        # --- fix size ---
-        if img.shape[:2] != (h, w):
-            img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+        # resize to match base
+        img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
 
-        # --- fix grayscale ---
+        # force 3-channel BGR
         if len(img.shape) == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-        # --- fix alpha channel ---
         if img.shape[2] == 4:
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-        # --- FORCE TYPE CONSISTENCY ---
-        img = img.astype(np.float32)
-
-        # IMPORTANT: MergeMertens expects float in [0,1]
-        img = img / 255.0
+        # ensure uint8 BEFORE conversion
+        img = np.clip(img, 0, 255).astype(np.uint8)
 
         cleaned.append(img)
 
-    # --- FINAL SAFETY CHECK ---
     if len(cleaned) < 2:
-        raise ValueError("Not enough valid images after cleanup")
+        raise ValueError("Not enough valid images after normalization")
 
-    # --- ENSURE ALL SAME SHAPE (double safety pass) ---
-    shapes = [i.shape for i in cleaned]
-    if len(set(shapes)) != 1:
-        raise ValueError(f"Shape mismatch after preprocessing: {shapes}")
+    return cleaned
+
+
+# ----------------------------
+# HDR FUSION (SAFE VERSION)
+# ----------------------------
+def fuse(images):
+
+    images = normalize_images(images)
+
+    # convert AFTER normalization (critical fix)
+    float_images = [img.astype(np.float32) / 255.0 for img in images]
 
     merge = cv2.createMergeMertens()
 
-    result = merge.process(cleaned)
+    return merge.process(float_images)
 
-    return result
 
+# ----------------------------
+# ENHANCEMENT (LIGHTROOM STYLE)
+# ----------------------------
 def enhance(img):
 
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
@@ -68,15 +69,16 @@ def enhance(img):
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
 
+# ----------------------------
+# COLOR GRADING (SLIDERS)
+# ----------------------------
 def grade(img, vividness, sky_boost):
 
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
 
-    # global vibrance
     s = np.clip(s * vividness, 0, 255)
 
-    # sky boost (blue range)
     sky_mask = (h > 90) & (h < 140)
     s[sky_mask] = np.clip(s[sky_mask] * sky_boost, 0, 255)
 
@@ -84,7 +86,13 @@ def grade(img, vividness, sky_boost):
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 
+# ----------------------------
+# MAIN PIPELINE
+# ----------------------------
 def process(images, vividness=1.2, sky_boost=1.3):
+
+    if images is None or len(images) == 0:
+        raise ValueError("No images provided")
 
     images = [img for img in images if img is not None]
 
@@ -92,6 +100,9 @@ def process(images, vividness=1.2, sky_boost=1.3):
         raise ValueError("Need at least 2 images")
 
     fused = fuse(images)
+
+    if fused is None:
+        raise ValueError("HDR fusion failed")
 
     fused = np.clip(fused * 255, 0, 255).astype(np.uint8)
 
