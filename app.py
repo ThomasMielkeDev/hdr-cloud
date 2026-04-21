@@ -1,26 +1,22 @@
 import os
 import zipfile
-import cv2
-import numpy as np
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
-from hdr import process
+import cv2
+from hdr import process_images
 
 app = Flask(__name__)
-
-# 🔥 FIXED CORS (critical)
-CORS(app, origins=["*"])
+CORS(app)
 
 UPLOAD_DIR = "uploads"
 EXTRACT_DIR = os.path.join(UPLOAD_DIR, "extracted")
 
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(EXTRACT_DIR, exist_ok=True)
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return "HDR API running ✔"
+    return "HDR service running ✔"
 
 
 @app.route("/hdr", methods=["POST"])
@@ -28,23 +24,21 @@ def hdr():
 
     try:
         if "file" not in request.files:
-            return jsonify({"error": "No file"}), 400
+            return jsonify({"error": "No file uploaded"}), 400
 
         file = request.files["file"]
-
-        vividness = float(request.form.get("vividness", 1.2))
-        sky_boost = float(request.form.get("sky", 1.3))
 
         zip_path = os.path.join(UPLOAD_DIR, "input.zip")
         file.save(zip_path)
 
-        # clear old files
+        # clear folder
         for f in os.listdir(EXTRACT_DIR):
             try:
                 os.remove(os.path.join(EXTRACT_DIR, f))
             except:
                 pass
 
+        # extract
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(EXTRACT_DIR)
 
@@ -68,7 +62,7 @@ def hdr():
         if len(images) < 2:
             return jsonify({"error": "Need at least 2 images"}), 400
 
-        result = process(images, vividness, sky_boost)
+        result = process_images(images)
 
         out_path = os.path.join(UPLOAD_DIR, "result.jpg")
         cv2.imwrite(out_path, result)
@@ -76,7 +70,6 @@ def hdr():
         return send_file(out_path, mimetype="image/jpeg")
 
     except Exception as e:
-        print("ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
 
 
