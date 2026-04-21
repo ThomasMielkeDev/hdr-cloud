@@ -7,38 +7,54 @@ def fuse(images):
     import cv2
     import numpy as np
 
-    # --- STEP 1: get base size ---
-    h, w = images[0].shape[:2]
+    if len(images) == 0:
+        raise ValueError("No images passed to fuse")
+
+    # --- STEP 1: force base size ---
+    base = images[0]
+    h, w = base.shape[:2]
 
     cleaned = []
 
-    for img in images:
+    for idx, img in enumerate(images):
 
         if img is None:
             continue
 
-        # --- force same size ---
+        # --- fix size ---
         if img.shape[:2] != (h, w):
-            img = cv2.resize(img, (w, h))
+            img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
 
-        # --- force 3 channels ---
+        # --- fix grayscale ---
         if len(img.shape) == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
+        # --- fix alpha channel ---
         if img.shape[2] == 4:
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-        # --- convert to float32 (CRITICAL) ---
-        img = img.astype(np.float32) / 255.0
+        # --- FORCE TYPE CONSISTENCY ---
+        img = img.astype(np.float32)
+
+        # IMPORTANT: MergeMertens expects float in [0,1]
+        img = img / 255.0
 
         cleaned.append(img)
 
+    # --- FINAL SAFETY CHECK ---
     if len(cleaned) < 2:
         raise ValueError("Not enough valid images after cleanup")
 
+    # --- ENSURE ALL SAME SHAPE (double safety pass) ---
+    shapes = [i.shape for i in cleaned]
+    if len(set(shapes)) != 1:
+        raise ValueError(f"Shape mismatch after preprocessing: {shapes}")
+
     merge = cv2.createMergeMertens()
 
-    return merge.process(cleaned)
+    result = merge.process(cleaned)
+
+    return result
 
 def enhance(img):
 
