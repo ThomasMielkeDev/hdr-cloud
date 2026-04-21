@@ -6,6 +6,7 @@ from hdr import process
 from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app, origins=["https://thomasmielke.dev"])
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
